@@ -1,0 +1,21 @@
+{
+  "name": "qantas-upgrade-backend",
+  "version": "0.1.0",
+  "description": "Availability + upgrade-likelihood API for Qantas flights, backed by the Amadeus Self-Service APIs",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "poll": "node src/poll-once.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3"
+  }
+}

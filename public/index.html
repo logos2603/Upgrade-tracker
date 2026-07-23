@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Upgrade backend — API tester</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, sans-serif; background:#0e1114; color:#e9e7e2; max-width:880px; margin:32px auto; padding:0 16px; }
+  h1 { font-size:20px; } h1 span { color:#e4002b; }
+  form { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+  input, button { font:inherit; padding:9px 10px; border-radius:8px; border:1px solid #2a313a; background:#171b20; color:inherit; }
+  input { width:110px; } input[type=date] { width:160px; }
+  button { background:#e4002b; border:0; color:#fff; font-weight:600; cursor:pointer; }
+  .flight { border:1px solid #2a313a; border-radius:10px; padding:12px 14px; margin:10px 0; background:#171b20; }
+  .flight b { color:#ff5f7a; font-family:ui-monospace, monospace; }
+  .gds { font-family:ui-monospace, monospace; font-size:13px; color:#9fe8c6; }
+  .cabin { margin:6px 0; font-size:14px; }
+  .award { color:#f0b429; }
+  .track { background:#2a313a; margin-left:8px; font-size:12px; padding:5px 9px; }
+  .muted { color:#8d97a3; font-size:13px; }
+  pre { background:#171b20; padding:12px; border-radius:8px; overflow:auto; font-size:12px; }
+</style>
+</head>
+<body>
+<h1><span>▲</span> Upgrade backend tester</h1>
+<p class="muted">Thin test page for the API — the real frontend lives in the React app. Sandbox data can be sparse; SYD→MEL usually returns results.</p>
+
+<form id="f">
+  <input id="origin" value="SYD" maxlength="3" aria-label="Origin" />
+  <input id="dest" value="MEL" maxlength="3" aria-label="Destination" />
+  <input id="date" type="date" aria-label="Date" />
+  <button>Search</button>
+</form>
+
+<div id="out"></div>
+<h3 style="font-size:15px">Tracked flights</h3>
+<div id="tracked" class="muted">Loading…</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const d = new Date(Date.now() + 14 * 864e5);
+$("date").value = d.toISOString().slice(0, 10);
+
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("out").innerHTML = '<p class="muted">Searching…</p>';
+  const p = new URLSearchParams({
+    origin: $("origin").value.toUpperCase(),
+    dest: $("dest").value.toUpperCase(),
+    date: $("date").value,
+  });
+  try {
+    const res = await fetch("/api/flights?" + p);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || res.status);
+    if (!json.flights.length) {
+      $("out").innerHTML = '<p class="muted">No flights returned (sandbox coverage is limited — try another route/date).</p>';
+      return;
+    }
+    $("out").innerHTML = json.flights.map((f) => `
+      <div class="flight">
+        <div><b>${f.number}</b> ${f.departure.airport} ${f.departure.at?.slice(11,16)} → ${f.arrival.airport} ${f.arrival.at?.slice(11,16)}
+          · ${f.price ? "from " + f.price.total + " " + f.price.currency : "no sandbox price"}
+          <button class="track" onclick="track('${f.carrier}','${f.flightNumber}','${f.departure.airport}','${f.arrival.airport}')">Track</button>
+        </div>
+        ${f.cabins.map((c) => `
+          <div class="cabin">${c.cabin}: <span class="gds">${c.gds}</span>
+            — ${c.open} open${c.award ? ` · <span class="award">${c.award} award</span>` : ""}</div>`).join("")}
+      </div>`).join("");
+  } catch (err) {
+    $("out").innerHTML = "<pre>" + err.message + "</pre>";
+  }
+});
+
+async function track(carrier, number, origin, dest) {
+  await fetch("/api/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ carrier, number, origin, dest }),
+  });
+  loadTracked();
+}
+
+async function untrack(id) {
+  await fetch("/api/track/" + id, { method: "DELETE" });
+  loadTracked();
+}
+
+async function stats(id) {
+  const res = await fetch("/api/stats/" + id);
+  const json = await res.json();
+  $("tracked").insertAdjacentHTML("beforeend", "<pre>" + JSON.stringify(json, null, 2) + "</pre>");
+}
+
+async function loadTracked() {
+  const res = await fetch("/api/track");
+  const { tracked } = await res.json();
+  $("tracked").innerHTML = tracked.length
+    ? tracked.map((t) => `<div class="flight"><b>${t.carrier}${t.flight_number}</b> ${t.origin}→${t.dest}
+        <button class="track" onclick="stats(${t.id})">Stats</button>
+        <button class="track" onclick="untrack(${t.id})">Remove</button></div>`).join("")
+    : "Nothing tracked yet — search a route and hit Track.";
+}
+loadTracked();
+</script>
+</body>
+</html>
